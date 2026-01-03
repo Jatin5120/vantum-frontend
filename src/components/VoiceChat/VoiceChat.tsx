@@ -323,38 +323,8 @@ export function VoiceChat() {
     try {
       setError(null);
 
-      // Send audio.start event with ACK tracking (sessionId is required per protocol)
-      const { eventId } = packAudioStart(
-        {
-          samplingRate: AUDIO_CONSTANTS.DEFAULT_SAMPLE_RATE,
-          language: AUDIO_CONSTANTS.DEFAULT_LANGUAGE,
-        },
-        sessionId
-      );
-      try {
-        const ack = await sendMessagePackWithAck(
-          {
-            eventType: VOICECHAT_EVENTS.AUDIO_START,
-            eventId,
-            sessionId,
-            payload: {
-              samplingRate: AUDIO_CONSTANTS.DEFAULT_SAMPLE_RATE,
-              language: AUDIO_CONSTANTS.DEFAULT_LANGUAGE,
-            },
-          },
-          10000 // 10 second timeout
-        );
-        logger.info("Audio start ACK received", { eventId: ack.eventId });
-      } catch (err) {
-        logger.error("Failed to receive ACK for audio.start", err, {
-          sessionId,
-        });
-        setError("Failed to receive acknowledgment from server");
-        return; // Don't start capture if ACK fails
-      }
-
-      // Start audio capture
-      await startCapture(async (chunk) => {
+      // Start audio capture first to get actual sample rate
+      const actualSampleRate = await startCapture(async (chunk) => {
         if (isConnected() && sessionId) {
           const { eventId } = packAudioChunk(
             {
@@ -378,6 +348,43 @@ export function VoiceChat() {
           }
         }
       });
+
+      logger.info("Audio capture started with actual sample rate", {
+        actualSampleRate,
+        requestedSampleRate: AUDIO_CONSTANTS.DEFAULT_SAMPLE_RATE,
+      });
+
+      // Send audio.start event with actual sample rate and ACK tracking
+      const { eventId } = packAudioStart(
+        {
+          samplingRate: actualSampleRate,
+          language: AUDIO_CONSTANTS.DEFAULT_LANGUAGE,
+        },
+        sessionId
+      );
+      try {
+        const ack = await sendMessagePackWithAck(
+          {
+            eventType: VOICECHAT_EVENTS.AUDIO_START,
+            eventId,
+            sessionId,
+            payload: {
+              samplingRate: actualSampleRate,
+              language: AUDIO_CONSTANTS.DEFAULT_LANGUAGE,
+            },
+          },
+          10000 // 10 second timeout
+        );
+        logger.info("Audio start ACK received", { eventId: ack.eventId });
+      } catch (err) {
+        logger.error("Failed to receive ACK for audio.start", err, {
+          sessionId,
+        });
+        // Stop capture if ACK fails
+        stopCapture();
+        setError("Failed to receive acknowledgment from server");
+        return;
+      }
 
       setIsRecording(true);
     } catch (err) {

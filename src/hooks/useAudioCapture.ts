@@ -10,12 +10,12 @@ export function useAudioCapture(config: AudioCaptureConfig = {}) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  
+
   const streamRef = useRef<MediaStream | null>(null);
   const captureRef = useRef<AudioCapture | null>(null);
 
   const startCapture = useCallback(
-    async (onChunk: (chunk: Uint8Array) => void) => {
+    async (onChunk: (chunk: Uint8Array) => void): Promise<number> => {
       try {
         setError(null);
 
@@ -28,9 +28,11 @@ export function useAudioCapture(config: AudioCaptureConfig = {}) {
         const capture = new AudioCapture();
         captureRef.current = capture;
 
-        // Start capturing
-        await capture.start(stream, onChunk, config.sampleRate);
+        // Start capturing and get actual sample rate
+        const actualSampleRate = await capture.start(stream, onChunk, config.sampleRate);
         setIsCapturing(true);
+
+        return actualSampleRate;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to start audio capture';
         setError(errorMessage);

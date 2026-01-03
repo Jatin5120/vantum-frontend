@@ -67,15 +67,19 @@ export class AudioCapture {
   private stream: MediaStream | null = null;
   private onChunk: ((chunk: Uint8Array) => void) | null = null;
   private isCapturing = false;
+  private hasLoggedFirstChunk = false;
+  private chunkCount = 0;
+  private actualSampleRate = 0;
 
   /**
    * Start capturing audio from stream
+   * @returns The actual sample rate achieved by the browser
    */
   async start(
     stream: MediaStream,
     onChunk: (chunk: Uint8Array) => void,
     sampleRate: number = AUDIO_CONSTANTS.DEFAULT_SAMPLE_RATE
-  ): Promise<void> {
+  ): Promise<number> {
     if (this.isCapturing) {
       throw new Error('Audio capture already started');
     }
@@ -87,6 +91,20 @@ export class AudioCapture {
     try {
       // Create AudioContext with desired sample rate
       this.audioContext = new AudioContext({ sampleRate });
+
+      // Verify actual sample rate achieved
+      this.actualSampleRate = this.audioContext.sampleRate;
+      if (this.actualSampleRate !== sampleRate) {
+        logger.warn('AudioContext sample rate mismatch', {
+          requested: sampleRate,
+          actual: this.actualSampleRate,
+          note: 'Browser may not support exact resampling to 16kHz',
+        });
+      }
+      logger.info('AudioContext created', {
+        sampleRate: this.actualSampleRate,
+        state: this.audioContext.state,
+      });
 
       // Create source from MediaStream
       this.sourceNode = this.audioContext.createMediaStreamSource(stream);
@@ -108,6 +126,21 @@ export class AudioCapture {
 
         const inputBuffer = event.inputBuffer;
         const inputData = inputBuffer.getChannelData(0); // Mono channel
+
+        this.chunkCount++;
+
+        // Log first chunk for diagnostics
+        if (!this.hasLoggedFirstChunk) {
+          const rms = Math.sqrt(inputData.reduce((sum, s) => sum + s * s, 0) / inputData.length);
+          logger.info('First audio chunk captured', {
+            sampleRate: this.audioContext?.sampleRate,
+            bufferLength: inputData.length,
+            rms: rms.toFixed(4),
+            isSilent: rms < 0.01,
+            note: rms < 0.01 ? 'AUDIO IS SILENT - Check microphone!' : 'Audio detected',
+          });
+          this.hasLoggedFirstChunk = true;
+        }
 
         // Convert Float32Array to Int16 PCM (16-bit)
         const pcmData = new Int16Array(inputData.length);
@@ -131,6 +164,8 @@ export class AudioCapture {
       this.processorNode.connect(this.audioContext.destination);
 
       logger.info('Audio capture started', { sampleRate });
+
+      return this.actualSampleRate;
     } catch (error) {
       this.isCapturing = false;
       throw error;
@@ -173,6 +208,9 @@ export class AudioCapture {
     }
 
     this.onChunk = null;
+    // Reset diagnostic flags
+    this.hasLoggedFirstChunk = false;
+    this.chunkCount = 0;
     logger.info('Audio capture stopped');
   }
 
