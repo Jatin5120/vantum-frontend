@@ -24,9 +24,16 @@ import {
   eventBus,
 } from "../../lib/websocket";
 
+// Voice IDs for Kyle (male) and Tessa (female)
+const VOICE_IDS = {
+  male: 'c961b81c-a935-4c17-bfb3-ba2239de8c2f', // Kyle
+  female: '6ccbfb76-1fc6-48f7-b71d-91ac6298247b', // Tessa
+} as const;
+
 export function VoiceChat() {
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [selectedVoice, setSelectedVoice] = useState<'male' | 'female'>('male');
 
   // Audio playback hook
   const { playChunk, stop: stopPlayback } = useAudioPlayback();
@@ -359,6 +366,7 @@ export function VoiceChat() {
         {
           samplingRate: actualSampleRate,
           language: AUDIO_CONSTANTS.DEFAULT_LANGUAGE,
+          voiceId: VOICE_IDS[selectedVoice],
         },
         sessionId
       );
@@ -371,6 +379,7 @@ export function VoiceChat() {
             payload: {
               samplingRate: actualSampleRate,
               language: AUDIO_CONSTANTS.DEFAULT_LANGUAGE,
+              voiceId: VOICE_IDS[selectedVoice],
             },
           },
           10000 // 10 second timeout
@@ -399,10 +408,12 @@ export function VoiceChat() {
     sendMessagePackWithAck,
     startCapture,
     sessionId,
+    selectedVoice,
+    stopCapture,
   ]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 p-8">
+    <div className="flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 p-8 min-h-[calc(100vh-4rem)]">
       <div className="max-w-2xl w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white text-center">
           Vantum Voice Chat
@@ -422,6 +433,47 @@ export function VoiceChat() {
             Session: {sessionId}
           </div>
         )}
+
+        {/* Voice Selection */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            Voice Selection
+          </label>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setSelectedVoice('male')}
+              disabled={isRecording}
+              className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+                selectedVoice === 'male'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+              } ${
+                isRecording
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'cursor-pointer'
+              }`}
+              title={isRecording ? 'Cannot change voice while recording' : ''}
+            >
+              Male Voice (Kyle)
+            </button>
+            <button
+              onClick={() => setSelectedVoice('female')}
+              disabled={isRecording}
+              className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+                selectedVoice === 'female'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+              } ${
+                isRecording
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'cursor-pointer'
+              }`}
+              title={isRecording ? 'Cannot change voice while recording' : ''}
+            >
+              Female Voice (Tessa)
+            </button>
+          </div>
+        </div>
 
         {/* Permission Status */}
         {hasPermission === false && (
